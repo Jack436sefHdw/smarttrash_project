@@ -72,6 +72,6 @@
 │ ├── model_0.84.keras
 │ └── model_0.93.keras
 ├── public/
-│ ├── index.html
+│ ├── Garbage_identification.html
 │ ├── script.js
 │ └── style.css
