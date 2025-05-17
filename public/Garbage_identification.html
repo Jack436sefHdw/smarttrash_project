@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>智慧垃圾桶</title>
+  <style>
+    :root {
+      --primary: #3498db;
+      --primary-light: #e0f3ff;
+      --accent: #2ecc71;
+      --error: #e74c3c;
+      --bg: #f9f9f9;
+      --card-bg: #ffffff;
+      --text: #2c3e50;
+      --radius: 8px;
+      --transition: 0.2s ease;
+    }
+    /* 基本重置 */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    h1 {
+      text-align: center;
+      padding: 1rem 0;
+      font-size: 2rem;
+      margin-bottom: 1rem;
+    }
+
+    /* 整体 Grid：第一行为 dropZone，第二行为三栏（高自动） */
+    #wrapper {
+      display: grid;
+      grid-template-columns: 2fr 1fr 2fr;   /* 左:中:右 = 2:1:2 */
+      grid-template-rows: auto auto;        /* 第一行自高(dropZone)，第二行自高(三栏) */
+      grid-template-areas:
+        "drop  drop  drop"
+        "left  mid   right";
+      gap: 0;
+    }
+
+    /* 拖放区跨三栏 */
+    #dropZone {
+      grid-area: drop;
+      margin: 0 1rem 1rem;
+      padding: 1.5rem;
+      border: 2px dashed var(--primary);
+      border-radius: var(--radius);
+      background: var(--card-bg);
+      color: var(--primary);
+      text-align: center;
+      cursor: pointer;
+      position: relative;
+      transition: background var(--transition), border-color var(--transition);
+    }
+    #dropZone p {
+      font-size: 1.1rem;
+      line-height: 1.4;
+    }
+    #dropZone.dragover {
+      background: var(--primary-light);
+      border-color: var(--accent);
+    }
+    #dropZone input {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* 左 / 中 / 右 三栏 */
+    #leftPanel {
+      grid-area: left;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px,1fr));
+      gap: 1rem;
+      padding: 1rem;
+      background: var(--card-bg);
+      /* ← 不再限制高度，随内容走 */
+    }
+    #middlePanel {
+      grid-area: mid;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+      padding: 1rem;
+      background: var(--card-bg);
+      height: 200px;      /* ← 中间面板高度固定 */
+    }
+    #rightPanel {
+      grid-area: right;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px,1fr));
+      gap: 1rem;
+      padding: 1rem;
+      background: var(--card-bg);
+      /* ← 不再限制高度，随内容走 */
+    }
+
+    /* 中栏按钮 */
+    #middlePanel button {
+      width: 100%;
+      max-width: 200px;
+      padding: 0.6rem 1.2rem;
+      border: none;
+      border-radius: var(--radius);
+      background: var(--text);
+      color: #fff;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: background var(--transition);
+    }
+    #middlePanel button:hover {
+      background: #1f2a30;
+    }
+
+    /* 卡片样式 */
+    .img-box {
+      background: var(--card-bg);
+      border-radius: var(--radius);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transition: transform var(--transition), box-shadow var(--transition);
+    }
+    .img-box:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    }
+    .img-box img {
+      width: 100%;
+      max-height: 200px;
+      object-fit: contain;
+    }
+    .content {
+      padding: 0.8rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .content p {
+      font-size: 1rem;
+      font-weight: bold;
+      text-align: center;
+    }
+    .content button,
+    .content select {
+      width: 100%;
+      padding: 0.5rem;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    .content button.correct {
+      background: var(--accent);
+      color: #fff;
+    }
+    .content button.wrong {
+      background: var(--error);
+      color: #fff;
+    }
+    .content select {
+      background: var(--bg);
+    }
+  </style>
+</head>
+<body>
+  <h1>智慧垃圾桶</h1>
+  <div id="wrapper">
+    <div id="dropZone">
+      <p>拖曳圖片到此處<br>或點擊選擇多張</p>
+      <input id="imageInput" type="file" accept="image/*" multiple/>
+    </div>
+    <div id="leftPanel"></div>
+    <div id="middlePanel">
+      <button id="moveRecyclables">移動可回收並細分</button>
+      <button id="clearAll">清除全部圖片</button>
+    </div>
+    <div id="rightPanel"></div>
+  </div>
+
+  <script>
+    const leftPanel   = document.getElementById('leftPanel');
+    const rightPanel  = document.getElementById('rightPanel');
+    const dropZone    = document.getElementById('dropZone');
+    const input       = document.getElementById('imageInput');
+    const moveBtn     = document.getElementById('moveRecyclables');
+    const clearBtn    = document.getElementById('clearAll');
+
+    const detailedLabels = [
+      "玻璃",
+      "紙類",
+      "紙容器",
+      "金屬罐",
+      "其他回收物",
+      "塑膠",
+      "塑膠容器"
+      
+    ];
+
+    ['dragenter','dragover'].forEach(e =>
+      dropZone.addEventListener(e, ev => {
+        ev.preventDefault(); ev.stopPropagation();
+        dropZone.classList.add('dragover');
+      })
+    );
+    ['dragleave','drop'].forEach(e =>
+      dropZone.addEventListener(e, ev => {
+        ev.preventDefault(); ev.stopPropagation();
+        dropZone.classList.remove('dragover');
+      })
+    );
+    dropZone.addEventListener('drop', ev => handleFiles([...ev.dataTransfer.files]));
+    dropZone.addEventListener('click', () => input.click());
+    input.addEventListener('change', () => {
+      handleFiles([...input.files]);
+      input.value = '';
+    });
+
+    clearBtn.addEventListener('click', () => {
+      leftPanel.innerHTML = '';
+      rightPanel.innerHTML = '';
+    });
+
+    function handleFiles(files) {
+      leftPanel.innerHTML  = '';
+      rightPanel.innerHTML = '';
+      files.forEach(createBox);
+    }
+
+    async function createBox(file) {
+      const box = document.createElement('div');
+      box.className = 'img-box';
+      box._file     = file;
+      leftPanel.appendChild(box);
+
+      const img = document.createElement('img');
+      img.src = URL.createObjectURL(file);
+      box.appendChild(img);
+
+      const content = document.createElement('div');
+      content.className = 'content';
+      box.appendChild(content);
+
+      const status = document.createElement('p');
+      status.textContent = '判斷中…';
+      content.appendChild(status);
+
+      try {
+        const fd  = new FormData(); fd.append('file', file);
+        const res = await fetch('http://localhost:5000/predict', { method:'POST', body:fd });
+        const data = await res.json();
+        status.textContent = `分類：${data.result} （${(data.confidence*100).toFixed(1)}%）`;
+        box.dataset.recyclable = data.result==='可回收';
+      } catch {
+        status.textContent = '預測失敗';
+        box.dataset.recyclable = false;
+      }
+
+      const ok = document.createElement('button');
+      ok.className   = 'correct';
+      ok.textContent = '正確';
+      ok.addEventListener('click', () => box.remove());
+      content.appendChild(ok);
+
+      const wrong = document.createElement('button');
+      wrong.className   = 'wrong';
+      wrong.textContent = '誤判，重標記';
+      wrong.addEventListener('click', () => {
+        ok.disabled = true;
+        wrong.remove();
+        ['可回收','不可回收'].forEach(lbl => {
+          const btn = document.createElement('button');
+          btn.className   = 'wrong';
+          btn.textContent = `標為 ${lbl}`;
+          btn.addEventListener('click', async () => {
+            const fd2 = new FormData();
+            fd2.append('file', file);
+            fd2.append('label', lbl);
+            await fetch('http://localhost:5000/collect_wrong', { method:'POST', body:fd2 });
+            box.remove();
+          });
+          content.appendChild(btn);
+        });
+      });
+      content.appendChild(wrong);
+    }
+
+    moveBtn.addEventListener('click', async () => {
+      const recyclables = Array.from(leftPanel.querySelectorAll('.img-box'))
+                                .filter(b => b.dataset.recyclable==='true');
+      for (const box of recyclables) {
+        leftPanel.removeChild(box);
+        rightPanel.appendChild(box);
+        box.querySelector('button.wrong')?.remove();
+
+        const content      = box.querySelector('.content');
+        const detailStatus = document.createElement('p');
+        detailStatus.className   = 'detail-status';
+        detailStatus.textContent = '細分中…';
+        content.appendChild(detailStatus);
+
+        try {
+          const fd  = new FormData(); fd.append('file', box._file);
+          const res = await fetch('http://localhost:5000/predict_detailed', { method:'POST', body:fd });
+          const det = await res.json();
+          detailStatus.textContent = `${det.label} （${(det.confidence*100).toFixed(1)}%）`;
+
+          const markBtn = document.createElement('button');
+          markBtn.className   = 'wrong';
+          markBtn.textContent = '標記細分錯誤';
+          content.appendChild(markBtn);
+
+          markBtn.addEventListener('click', () => {
+            markBtn.remove();
+            const sel = document.createElement('select');
+            detailedLabels.forEach(lbl => {
+              const opt = document.createElement('option');
+              opt.value     = lbl;
+              opt.textContent = lbl;
+              sel.appendChild(opt);
+            });
+            content.appendChild(sel);
+
+            const confirmBtn = document.createElement('button');
+            confirmBtn.textContent = '確認標記';
+            content.appendChild(confirmBtn);
+
+            confirmBtn.addEventListener('click', async () => {
+              const fd2 = new FormData();
+              fd2.append('file', box._file);
+              fd2.append('label', sel.value);
+              await fetch('http://localhost:5000/collect_wrong', { method:'POST', body:fd2 });
+              box.remove();
+            });
+          });
+        } catch {
+          detailStatus.textContent = '細分失敗';
+        }
+      }
+    });
+  </script>
+</body>
+</html>
